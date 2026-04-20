@@ -1,0 +1,6 @@
+*.json
+!sample_reviews.json
+*.zip
+*.tar
+*.png
+.DS_Store
