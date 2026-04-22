@@ -1,0 +1,30 @@
+---
+title: "graphAmazonReview"
+author: "Sofia Caceres"
+date: "2026-04-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rating_counts <- read.csv("results/rating_counts.csv")
+
+total_reviews <- sum(rating_counts$count)
+grad_cols <- colorRampPalette(
+  c("#ff4fa3", "#fbb1d3", "#cce7ff", "#66b3ff", "#1f78ff")
+)(nrow(rating_counts))
+```
+
+```{r}
+barplot(
+  rating_counts$count,
+  names.arg = rating_counts$rating,
+  main = paste(
+    "Distribution of Review Ratings (Full Dataset, n =",
+    format(total_reviews, big.mark = ","),
+    ")"
+  ),
+  xlab = "Rating",
+  ylab = "Count",
+  col = grad_cols
+)
+```

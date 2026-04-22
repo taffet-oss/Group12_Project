@@ -1,0 +1,314 @@
+---
+title: "AmazonReviewModeling"
+author: "Sofia Caceres"
+date: "2026-04-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(tidytext)
+library(knitr)
+
+results_dir <- "results"
+full_models_dir <- file.path(results_dir, "full_models")
+
+rating_counts <- read.csv(file.path(results_dir, "rating_counts.csv"))
+word_counts_full <- read.csv(file.path(results_dir, "word_counts_by_group.csv"))
+full_model_summary <- read.csv(file.path(full_models_dir, "full_model_data_summary.csv"))
+full_model_metrics <- read.csv(file.path(full_models_dir, "full_model_metrics.csv"))
+logistic_coefficients <- read.csv(file.path(full_models_dir, "logistic_coefficients.csv"))
+random_forest_importance <- read.csv(file.path(full_models_dir, "random_forest_importance.csv"))
+
+total_reviews <- sum(rating_counts$count)
+
+ratings_summary <- rating_counts %>%
+  mutate(percent = round(100 * count / total_reviews, 2))
+
+review_word_counts <- word_counts_full %>%
+  filter(group %in% c("low", "high")) %>%
+  mutate(review_label = if_else(group == "low", "bad", "good")) %>%
+  select(review_label, word, n = count)
+
+word_counts <- review_word_counts %>%
+  pivot_wider(
+    names_from = review_label,
+    values_from = n,
+    values_fill = 0
+  ) %>%
+  mutate(
+    total = bad + good,
+    bad_prop = bad / total,
+    good_prop = good / total,
+    difference = good_prop - bad_prop
+  )
+```
+
+# Full Dataset Summary
+
+This report uses the full Amazon review dataset processed with `analyze_reviews.sh`. The original full data file has one truncated final line, so the analysis uses the complete review records.
+
+```{r}
+total_reviews
+```
+
+```{r}
+ratings_summary %>%
+  rename(
+    Rating = rating,
+    Count = count,
+    Percent = percent
+  ) %>%
+  kable()
+```
+
+```{r}
+ggplot(ratings_summary, aes(x = factor(rating), y = count, fill = factor(rating))) +
+  geom_col(show.legend = FALSE) +
+  scale_y_continuous(labels = function(x) format(x, big.mark = ",", scientific = FALSE)) +
+  labs(
+    title = "Distribution of Review Ratings in the Full Amazon Dataset",
+    x = "Rating",
+    y = "Count"
+  )
+```
+
+# Word Counts
+
+For the good/bad comparison, 1-star and 2-star reviews are labeled bad, while 4-star and 5-star reviews are labeled good. Three-star reviews are counted in the rating distribution but excluded from the good/bad word comparison.
+
+```{r}
+top_words <- review_word_counts %>%
+  group_by(review_label) %>%
+  slice_max(n, n = 15) %>%
+  ungroup()
+
+ggplot(top_words, aes(x = reorder_within(word, n, review_label), y = n, fill = review_label)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ review_label, scales = "free") +
+  scale_x_reordered() +
+  scale_y_continuous(labels = function(x) format(x, big.mark = ",", scientific = FALSE)) +
+  coord_flip() +
+  labs(
+    title = "Most Common Words in Good vs Bad Amazon Reviews",
+    x = "Word",
+    y = "Count"
+  )
+```
+
+```{r}
+word_counts %>%
+  filter(total >= 1000) %>%
+  arrange(difference) %>%
+  head(20)
+
+word_counts %>%
+  filter(total >= 1000) %>%
+  arrange(desc(difference)) %>%
+  head(20)
+```
+
+```{r}
+bad_words <- word_counts %>%
+  filter(total >= 1000) %>%
+  arrange(difference) %>%
+  head(20)
+
+good_words <- word_counts %>%
+  filter(total >= 1000) %>%
+  arrange(desc(difference)) %>%
+  head(20)
+
+bad_words
+good_words
+```
+
+```{r}
+plot_words <- bind_rows(
+  bad_words %>% mutate(group = "More common in bad reviews"),
+  good_words %>% mutate(group = "More common in good reviews")
+)
+
+ggplot(plot_words, aes(x = reorder(word, difference), y = difference, fill = group)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ group, scales = "free_y") +
+  coord_flip() +
+  labs(
+    title = "Words Most Associated with Good vs Bad Reviews",
+    x = "Word",
+    y = "Good proportion minus bad proportion"
+  )
+```
+
+# Regression And Random Forest
+
+The logistic regression and random forest models were trained from the terminal with `run_full_models.sh`. The script streams the full Amazon review file, skips the malformed final line, excludes 3-star reviews from the good/bad classification task, and uses the top 100 full-corpus words as binary document features. Identical feature patterns are compressed with sample weights so the models can use all labeled reviews without writing a huge model matrix to disk.
+
+```{r}
+full_model_summary %>%
+  rename(
+    Metric = metric,
+    Value = value
+  ) %>%
+  kable()
+```
+
+```{r}
+full_model_metrics %>%
+  mutate(
+    accuracy = round(accuracy, 4)
+  ) %>%
+  rename(
+    Model = model,
+    Accuracy = accuracy,
+    `Actual good / predicted good` = actual_good_pred_good,
+    `Actual good / predicted bad` = actual_good_pred_bad,
+    `Actual bad / predicted good` = actual_bad_pred_good,
+    `Actual bad / predicted bad` = actual_bad_pred_bad
+  ) %>%
+  kable()
+```
+
+```{r}
+model_accuracy <- full_model_metrics %>%
+  mutate(
+    Model = recode(
+      model,
+      logistic_regression = "Logistic regression",
+      random_forest = "Random forest"
+    )
+  )
+
+ggplot(model_accuracy, aes(x = Model, y = accuracy, fill = Model)) +
+  geom_col(show.legend = FALSE, width = 0.6) +
+  geom_text(
+    aes(label = paste0(round(accuracy * 100, 1), "%")),
+    vjust = -0.4
+  ) +
+  scale_y_continuous(
+    labels = function(x) paste0(round(100 * x), "%"),
+    limits = c(0, 1)
+  ) +
+  labs(
+    title = "Model Accuracy on Full Amazon Review Test Set",
+    x = "Model",
+    y = "Accuracy"
+  )
+```
+
+```{r}
+model_confusion <- bind_rows(
+  full_model_metrics %>%
+    transmute(model, Actual = "Good", Predicted = "Good", Count = actual_good_pred_good),
+  full_model_metrics %>%
+    transmute(model, Actual = "Good", Predicted = "Bad", Count = actual_good_pred_bad),
+  full_model_metrics %>%
+    transmute(model, Actual = "Bad", Predicted = "Good", Count = actual_bad_pred_good),
+  full_model_metrics %>%
+    transmute(model, Actual = "Bad", Predicted = "Bad", Count = actual_bad_pred_bad)
+) %>%
+  mutate(
+    Model = recode(
+      model,
+      logistic_regression = "Logistic regression",
+      random_forest = "Random forest"
+    ),
+    Actual = factor(Actual, levels = c("Bad", "Good")),
+    Predicted = factor(Predicted, levels = c("Good", "Bad"))
+  )
+
+ggplot(model_confusion, aes(x = Predicted, y = Actual, fill = Count)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = format(Count, big.mark = ",")), color = "white") +
+  facet_wrap(~ Model) +
+  coord_equal() +
+  scale_fill_gradient(low = "#9ecae1", high = "#08519c") +
+  labs(
+    title = "Confusion Matrices for Full-Data Models",
+    x = "Predicted label",
+    y = "Actual label",
+    fill = "Count"
+  )
+```
+
+```{r}
+logistic_coefficients %>%
+  arrange(desc(coefficient_for_bad_review)) %>%
+  head(15) %>%
+  rename(
+    Word = word,
+    `Logistic coefficient for bad review` = coefficient_for_bad_review
+  ) %>%
+  kable()
+```
+
+```{r}
+logistic_coefficients %>%
+  arrange(coefficient_for_bad_review) %>%
+  head(15) %>%
+  rename(
+    Word = word,
+    `Logistic coefficient for bad review` = coefficient_for_bad_review
+  ) %>%
+  kable()
+```
+
+```{r}
+logistic_plot_words <- bind_rows(
+  logistic_coefficients %>%
+    arrange(desc(coefficient_for_bad_review)) %>%
+    head(15) %>%
+    mutate(group = "More predictive of bad reviews"),
+  logistic_coefficients %>%
+    arrange(coefficient_for_bad_review) %>%
+    head(15) %>%
+    mutate(group = "More predictive of good reviews")
+)
+
+ggplot(
+  logistic_plot_words,
+  aes(
+    x = reorder_within(word, coefficient_for_bad_review, group),
+    y = coefficient_for_bad_review,
+    fill = group
+  )
+) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ group, scales = "free_y") +
+  scale_x_reordered() +
+  coord_flip() +
+  labs(
+    title = "Most Influential Logistic Regression Words",
+    x = "Word",
+    y = "Coefficient for bad review"
+  )
+```
+
+```{r}
+random_forest_importance %>%
+  head(20) %>%
+  rename(
+    Word = word,
+    `Random forest importance` = importance
+  ) %>%
+  kable()
+```
+
+```{r}
+random_forest_importance %>%
+  head(20) %>%
+  ggplot(aes(x = reorder(word, importance), y = importance)) +
+  geom_col(fill = "#238b45") +
+  coord_flip() +
+  labs(
+    title = "Top Random Forest Word Importance Scores",
+    x = "Word",
+    y = "Importance"
+  )
+```
+
+# Modeling Note
+
+The model results above come from the full terminal run saved in `results/full_models`. One important modeling choice is that the features are binary indicators for whether each top word appears in a review, rather than exact word counts. This keeps the full-dataset model feasible on the available disk space while still using every labeled complete review through sample weights.

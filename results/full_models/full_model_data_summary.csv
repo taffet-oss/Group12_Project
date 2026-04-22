@@ -1,0 +1,11 @@
+metric,value
+bad_reviews,862923
+complete_records,6427547
+good_reviews,5127069
+labeled_reviews,5989992
+malformed_lines,1
+neutral_reviews_skipped,437555
+test_reviews,1197491
+train_reviews,4792501
+unique_test_patterns,655240
+unique_train_patterns,2359410

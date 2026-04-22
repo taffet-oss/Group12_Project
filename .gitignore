@@ -1,0 +1,9 @@
+*.json
+*.zip
+*.tar
+.DS_Store
+.Rhistory
+sample_results/
+results/modeling_reviews.json
+results/full_models_smoke*/
+

@@ -1,0 +1,3 @@
+model,accuracy,actual_good_pred_good,actual_good_pred_bad,actual_bad_pred_good,actual_bad_pred_bad
+logistic_regression,0.8854663625864412,998552,26776,110377,61786
+random_forest,0.903517437709344,1003014,22314,93223,78940
