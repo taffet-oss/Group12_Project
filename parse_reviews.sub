@@ -1,0 +1,17 @@
+universe = vanilla
+executable = run_job.sh
+
+transfer_input_files = reviews.zip, parse_reviews.R, stopwords.txt
+
+output = job_$(Cluster).out
+error = job_$(Cluster).err
+log = job_$(Cluster).log
+
+request_cpus = 1
+request_memory = 2GB
+request_disk = 2GB
+
+requirements = (HasCHTCSoftware == true)
+container_image = /cvmfs/singularity.opensciencegrid.org/htc/rocky8:latest
+
+queue
