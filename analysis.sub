@@ -1,13 +1,9 @@
-# analysis.sub
 universe = vanilla
 executable = /usr/bin/Rscript
 arguments = analysis.R
 
-# Transfer your script to the worker node
 transfer_input_files = analysis.R
 
-# Path to the data in staging
-# Note: R will read directly from this path in the script
 output = logs/analysis.out
 error = logs/analysis.err
 log = logs/analysis.log
