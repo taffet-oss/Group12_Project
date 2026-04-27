@@ -1,0 +1,18 @@
+universe = container
+container_image = docker://rocker/verse:latest
+
+executable = word_counts_sofia.sh
+arguments = All_Amazon_Review.json 20
+
+transfer_input_files = word_counts_sofia.R, file:///staging/sacaceres/All_Amazon_Review.json
+
+output = logs/word_counts_sofia.out
+error = logs/word_counts_sofia.err
+log = logs/word_counts_sofia.log
+
+requirements = (HasCHTCStaging == true)
+request_cpus = 1
+request_memory = 4GB
+request_disk = 15GB
+
+queue
