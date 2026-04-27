@@ -1,0 +1,19 @@
+universe = container
+container_image = docker://rocker/verse:latest
+
+executable = word_counts_chunk.sh
+arguments = $(chunk_file) $(Process)
+
+transfer_input_files = word_counts_chunk.R, file:///staging/sacaceres/parallel_word_chunks/$(chunk_file)
+transfer_output_files = partial_counts_$(Process).csv, chunk_summary_$(Process).txt
+
+output = logs/word_counts_chunk_$(Process).out
+error = logs/word_counts_chunk_$(Process).err
+log = logs/word_counts_chunk_$(Process).log
+
+requirements = (HasCHTCStaging == true)
+request_cpus = 1
+request_memory = 2GB
+request_disk = 4GB
+
+queue chunk_file from parallel_chunk_manifest.txt
